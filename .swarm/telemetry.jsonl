@@ -1,0 +1,5 @@
+{"timestamp":"2026-09-14T14:44:51.172Z","event":"model_unresolved","sessionId":"preflight","agentName":"coder","model":"opencode/minimax-m2.5-free","detail":"provider \"opencode\" does not list model \"minimax-m2.5-free\""}
+{"timestamp":"2026-09-14T14:45:01.490Z","event":"session_started","sessionId":"ses_f5f9f4e08ffe0F0Te5vjlM89U6","agentName":"architect"}
+{"timestamp":"2026-09-14T15:02:45.798Z","event":"session_started","sessionId":"ses_f5f8f2589ffeq4kaeRZpjHAEK8","agentName":"architect"}
+{"timestamp":"2026-09-14T15:54:14.178Z","event":"model_unresolved","sessionId":"preflight","agentName":"coder","model":"opencode/minimax-m2.5-free","detail":"provider \"opencode\" does not list model \"minimax-m2.5-free\""}
+{"timestamp":"2026-09-14T15:54:25.473Z","event":"session_started","sessionId":"ses_f5f5fc743ffeeqAxsLtbSKlK9O","agentName":"architect"}

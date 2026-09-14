@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+    <participant profile_name="default" is_default_profile="true">
+        <rtps>
+            <builtin>
+                <use_SIMPLE_EndpointDiscoveryProtocol>true</use_SIMPLE_EndpointDiscoveryProtocol>
+                <domainId>0</domainId>
+                <leaseDuration>
+                    <sec>20</sec>
+                </leaseDuration>
+                <announcementPeriod>
+                    <sec>1</sec>
+                    <nanosec>0</nanosec>
+                </announcementPeriod>
+            </builtin>
+            <port>
+                <portBase>7400</portBase>
+            </port>
+        </rtps>
+    </participant>
+    
+    <!-- Profile for local communication only (no multicast) -->
+    <participant profile_name="local_only">
+        <rtps>
+            <builtin>
+                <use_SIMPLE_EndpointDiscoveryProtocol>true</use_SIMPLE_EndpointDiscoveryProtocol>
+                <domainId>0</domainId>
+                <leaseDuration>
+                    <sec>20</sec>
+                </leaseDuration>
+                <announcementPeriod>
+                    <sec>1</sec>
+                    <nanosec>0</nanosec>
+                </announcementPeriod>
+                <metatrafficUnicastLocatorList>
+                    <locator>
+                        <udpv4>
+                            <address>127.0.0.1</address>
+                            <port>7410</port>
+                        </udpv4>
+                    </locator>
+                </metatrafficUnicastLocatorList>
+                <metatrafficMulticastLocatorList/>
+            </builtin>
+            <port>
+                <portBase>7400</portBase>
+            </port>
+        </rtps>
+    </participant>
+</profiles>

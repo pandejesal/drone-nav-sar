@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "extractorStamp": "4d9845d3e06c3c961b2e2a31ea7d92806a07562e289b38057fe3ba9d0b50acb1",
+  "exclusionStamp": "cceddb84f07166eb48fa3314cdb4ef68e65c367692eed22b40d7163525bc2198",
+  "files": {
+    ".opencode/package.json": {
+      "size": 65,
+      "mtimeMs": 1789398050267.162
+    },
+    ".swarm/bundled-skills/codebase-review-swarm/scripts/init-review-run.py": {
+      "size": 4410,
+      "mtimeMs": 1787603707131.8596
+    },
+    ".swarm/bundled-skills/codebase-review-swarm/scripts/validate-skill-package.py": {
+      "size": 2063,
+      "mtimeMs": 1787603707135.8706
+    },
+    "docker/scripts/verify_install.py": {
+      "size": 5120,
+      "mtimeMs": 1789399356317.0159
+    }
+  }
+}

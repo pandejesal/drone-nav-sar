@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+  # Main development container
+  drone-nav-sar:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: final
+    image: drone-nav-sar:latest
+    container_name: drone-nav-sar-dev
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,display
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=0
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/workspace/fastdds.xml
+    volumes:
+      # Project source
+      - ../src:/workspace/src
+      - ../assets:/workspace/assets
+      - ../models:/workspace/models
+      - ../prompts:/workspace/prompts
+      - ../docs:/workspace/docs
+      - ../tests:/workspace/tests
+      - ../.harness-memory:/workspace/.harness-memory
+      - ../04-Prompt-Queues:/workspace/04-Prompt-Queues
+      # Docker config
+      - ./fastdds.xml:/workspace/fastdds.xml:ro
+      # X11 for GUI apps (Blender, Gazebo, Isaac Sim)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # USB for drone hardware (optional)
+      - /dev/bus/usb:/dev/bus/usb:rw
+    devices:
+      - /dev/dri:/dev/dri  # GPU access
+    network_mode: host
+    ipc: host
+    pid: host
+    cap_add:
+      - SYS_PTRACE
+      - CAP_DAC_READ_SEARCH
+    security_opt:
+      - seccomp:unconfined
+    stdin_open: true
+    tty: true
+    command: bash
+
+  # Isaac Sim - use NVIDIA's prebuilt container (recommended)
+  # Run separately: docker run --gpus all -it --rm -v /tmp/.X11-unix:/tmp/.X11-unix nvcr.io/nvidia/isaac-sim:4.2.0
+  isaac-sim:
+    image: nvcr.io/nvidia/isaac-sim:4.2.0
+    container_name: isaac-sim-4.2
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - ACCEPT_EULA=Y
+      - DISPLAY=${DISPLAY:-:0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ../assets:/assets
+      - ../models:/models
+    network_mode: host
+    ipc: host
+    profiles:
+      - isaac-sim
+    command: ["bash"]
+
+  # AirSim - run on Windows host with Unreal Engine, connect via network
+  # This is a placeholder for docker-compose completeness
+  airsim:
+    image: microsoft/airsim:1.8.0
+    container_name: airsim-1.8
+    runtime: nvidia
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    network_mode: host
+    profiles:
+      - airsim
+    command: ["bash"]
+
+  # Gazebo Harmonic (via ROS2)
+  gazebo:
+    image: ros:humble-gazebo
+    container_name: gazebo-harmonic
+    runtime: nvidia
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - GAZEBO_MODEL_PATH=/workspace/assets/gazebo_models
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ../assets:/workspace/assets
+    network_mode: host
+    ipc: host
+    profiles:
+      - gazebo
+    command: ["gz", "sim", "-v", "4"]
+
+  # TensorBoard for training visualization
+  tensorboard:
+    image: tensorflow/tensorflow:2.17.0-gpu
+    container_name: tensorboard
+    runtime: nvidia
+    ports:
+      - "6006:6006"
+    volumes:
+      - ../models:/models
+      - ../logs:/logs
+    command: ["tensorboard", "--logdir=/logs", "--host=0.0.0.0", "--port=6006"]
+    profiles:
+      - monitoring
+
+  # Weights & Biases (optional)
+  wandb:
+    image: wandb/local:latest
+    container_name: wandb-local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../wandb:/vol/wandb
+    profiles:
+      - monitoring

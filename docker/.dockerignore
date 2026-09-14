@@ -1,0 +1,62 @@
+# DroneNav-SAR .dockerignore
+# Exclude files not needed in build context
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large data (use volumes instead)
+assets/scans/*
+assets/meshes/*
+models/*
+logs/*
+wandb/*
+
+# Documentation builds
+docs/_build
+site
+
+# Docker
+docker/*.log
+docker/build/*
+
+# Temporary
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Large model checkpoints (use git-lfs or DVC)
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.engine
+
+# Dataset cache
+.cache/
+data/
