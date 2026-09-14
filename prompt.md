@@ -90,15 +90,16 @@ drone-nav-sar/
 
 ## INTER-HARNESS DELEGATION (via ecosystem-orchestrator skill)
 
-| Harness | Role | Trigger |
-|---------|------|---------|
-| **Prime** | Long RL evolution runs (hours) | `prime-agent --cwd ... --provider opencode --goal "Evolve PPO hyperparams for Sprint 3" --autonomous` |
-| **OpenCode** | Code gen, tests, sim envs | `opencode run "Implement Sprint 2 Isaac Sim env" -f prompts/sprint2.md -m nemotron-3-ultra-free` |
-| **Kilo Code** | Inline edits, bug fixes | IDE-level patches during review |
-| **Jules** | GitHub PRs for release branches | `jules_create(prompt="...")` |
-| **Antigravity** | Deep refactors (e.g., sim abstraction layer) | Major architecture shifts |
+| Harness | Role (THIS project) | Trigger |
+|---------|---------------------|---------|
+| **Prime** | Long RL evolution (hours): curriculum search, hyperparam sweeps, DreamerV3/JAX multi-seed runs. Use for Sprints 4-6 RL core. | `prime-agent --cwd . --provider opencode --goal "Evolve PPO hyperparams Sprint 4 (CleanRL, mock_backend, N=8 vec_env)" --autonomous` |
+| **OpenCode** | Code gen (free-tier): recon, sim envs, RL trainers, tests, CI. Primary coder for Sprints 7-9 (friend's lane). | `opencode run "Implement X" -f prompts/sprintN.md -m muse-spark-1.3-contributor-free` |
+| **Kilo Code** | Inline edits, bug fixes, test patches during review | IDE-level patches |
+| **Antigravity** | Deep refactors: sim abstraction layer, control stack, USD/glTF pipeline rewrite | Major architecture shifts (needs human approve) |
 
-**Bus:** `04-Prompt-Queues/Ecosystem/InterHarness/<from>-to-<to>-YYYY-MM-DD.md`
+Jules is NOT used in this project.
+
+**Bus:** `04-Prompt-Queues/Ecosystem/InterHarness/<from>-to-<to>-YYYY-MM-DD.md` — both machines read/write here; append-only.
 
 ---
 
@@ -129,13 +130,53 @@ drone-nav-sar/
 
 ---
 
-## CURRENT STATE (Sprint 0 — Setup)
-- [x] Repo initialized
-- [x] Prompt.md created (this file)
-- [x] Docker dev container with Isaac Sim + AirSim + Blender headless
-- [x] COLMAP + Nerfstudio working on sample scan
-- [x] BlenderProc cleanup script
-- [ ] First /loop test run
+## CURRENT STATE (Sprint 3 complete — 2026-09-14)
+- [x] Sprints 1-3 done (docker → reconstruction → sim mock_backend + 3 envs, 20 tests green)
+- [x] Repo: https://github.com/pandejesal/drone-nav-sar (private, master)
+- [x] Isolation: .gitignore, project-local .venv/.opencode/.harness-memory; vault submodule at ./vault
+- [x] Friend bootstrap: scripts/setup-friend-mac.sh + prompts/bootstrap-opencode.md
+- [ ] Sprint 4 next (RL PPO) — see NEXT ACTION below
+
+---
+
+## COLLABORATION — OWNERSHIP MAP (no overlaps, both use /loop + InterHarness bus)
+
+**Rule:** One sprint per person at a time. Claim by creating `prompts/sprintN_<owner>.md` and pushing. Never edit the other's active sprint files without a PR.
+
+| Owner | Machine | Owns (code) | Owns (harness) | Branch naming |
+|-------|---------|-------------|----------------|---------------|
+| **YOU** | Windows (Pro) | Sprint 4: `src/rl/` PPO (`ppo_nav.py`, `policies.py`, `vec_env.py`) + `src/eval/` SPL; Sprint 5: dynamic obstacles curriculum; Sprint 6: Sim2Real + Crazyflie | **Prime** (long RL evolution), **Antigravity** (deep refactors) | `sprint4-ppo-<initials>`, `sprint5-dynamic-<initials>` |
+| **FRIEND** | MacBook (free) | Sprint 7: SAR multi-room + YOLO victim detect + `drop_payload`; Sprint 8: hierarchical planner; Sprint 9: multi-drone comms | **OpenCode** (code gen), **Kilo Code** (inline fixes) | `sprint7-sar-<initials>`, `sprint8-hier-<initials>` |
+| **SHARED** | both (PR required) | `prompt.md` (append-only, bump version), `.harness-memory/evolution-lessons.json` (append-only), `tests/` for your sprint, `docs/`, `docker/` | InterHarness bus `04-Prompt-Queues/Ecosystem/InterHarness/` | `main` protected — merge via PR only |
+
+**Git workflow (both machines):**
+```bash
+git checkout -b sprint4-ppo-you
+# work on your sprint files only
+git add src/rl/ tests/test_rl.py
+git commit -m "Sprint 4: PPO trainer (mock_backend, vec_env N=8)"
+git push -u origin sprint4-ppo-you
+# open PR on GitHub, other person reviews, squash-merge
+git checkout master && git pull
+```
+
+**InterHarness bus (how AIs understand each other):**
+- After each /loop iteration or manual run, write ONE file:
+  `04-Prompt-Queues/Ecosystem/InterHarness/<from>-to-<to>-YYYY-MM-DD.md`
+  e.g. `prime-to-opencode-2026-09-15.md` or `mac-bootstrap-2026-09-15.md`
+- Format: `## From / To / Sprint / Done / Next / Blockers` — keep it short.
+- Both machines `git pull` at start of day to read the bus.
+
+**Free-tier model rotation (both machines, pinned per /loop cycle):**
+- `muse-spark-1.3-contributor-free` (default), fallback `nemotron-3-ultra-free`, `mimo-v2.5-free`, `nemotron-3.5-lightning-free` on 429.
+- Config: `.opencode/opencode.json` (project-local, committed). No global overwrite.
+
+## ISOLATION GUARANTEE (your concern — other projects unaffected)
+- This repo's configs are **project-local**: `.venv/`, `.opencode/`, `.harness-memory/`, `vault/` (submodule).
+- Global vault stays at `C:/Users/DELL/Documents/Obsidian Vault` (Windows) / `~/Documents/Obsidian Vault` (Mac) — **not moved**. Submodule `vault/` is a second clone *inside* this repo only; other projects still import from the global path.
+- Global Hermes (`%LOCALAPPDATA%/hermes` / `~/.config/hermes`), global opencode (`~/.opencode`), Mnemosyne global DB are **never overwritten** — friend's `scripts/setup-friend-mac.sh` writes only to `$PROJECT_DIR`.
+- `.gitignore` excludes `.venv`, `__pycache__`, `models/`, `assets/scans/` so no cross-project pollution.
+- To verify: `git status` should never show changes outside this repo's root.
 
 ---
 

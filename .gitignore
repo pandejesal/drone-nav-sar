@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Tests & cache
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Project artifacts - never commit large binaries
+assets/scans/
+assets/meshes/*.glb
+assets/meshes/*.usd
+assets/meshes/*.obj
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.ckpt
+*.blend
+*.blend1
+
+# Env & secrets
+.env
+*.key
+*.pem
+alpaca_keys
+.mnemosyne/
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+docker/.docker/
+
+# Hermes / loop local state (keep evolution-lessons tracked, ignore runtime)
+.hermes_history
+.models_dev_cache*
+
+# Swarm runtime (keep config, ignore locks/evidence cache)
+.swarm/locks/
+.swarm/evidence/
+.swarm/telemetry.jsonl
+.swarm/repo-graph*.json
+.opencode/node_modules/
