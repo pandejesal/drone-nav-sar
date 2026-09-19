@@ -316,3 +316,123 @@ class SwarmCoordinator:
         return {"tasks": [t.task_id for t in tasks], "roles": roles,
                 "task_graph": graph, "leader": self.leader_id,
                 "latency_ms": (time.perf_counter() - t0) * 1000.0}
+
+
+# -- Sprint 25: hierarchical command + emergent behavior detection --------
+# SAR-only: platoon (4, tactical) → company (16, operational) →
+# battalion (50+, strategic). Emergent metrics per spec table.
+
+COMMAND_LATENCY_MS = {"drone": 10.0, "platoon": 50.0, "company": 100.0,
+                      "battalion": 500.0}
+EMERGENT_THRESHOLDS = {"flocking": 0.8, "flanking_ratio": 2.0,
+                       "encircling": 0.9, "swarming_density": 0.5}
+
+
+def build_command_hierarchy(drone_ids: List[int]) -> Dict:
+    """Partition ids into battalion → companies → platoons of 4 (SAR roles)."""
+    from src.sim.large_scale_swarm import build_battalion_hierarchy
+    return build_battalion_hierarchy(len(list(drone_ids)))
+
+
+def command_latency_ms(level: str) -> float:
+    """Authority latency budget for a command level (<10/50/100/500 ms)."""
+    return float(COMMAND_LATENCY_MS.get(level, 500.0))
+
+
+def detect_flocking(velocities: np.ndarray,
+                    thresh: float = EMERGENT_THRESHOLDS["flocking"]) -> Dict:
+    """Flocking iff mean pairwise velocity alignment > 0.8."""
+    from src.sim.large_scale_swarm import velocity_alignment
+    align = velocity_alignment(np.asarray(velocities, dtype=np.float32))
+    return {"behavior": "flocking", "detected": bool(align > thresh),
+            "metric": align, "threshold": thresh}
+
+
+def detect_flanking(positions: np.ndarray, formation_width: float = 16.0,
+                    ratio: float = EMERGENT_THRESHOLDS["flanking_ratio"]) -> Dict:
+    """Flanking iff lateral spread > 2x formation width."""
+    from src.sim.large_scale_swarm import lateral_spread
+    spread = lateral_spread(np.asarray(positions, dtype=np.float32))
+    return {"behavior": "flanking", "detected": bool(spread > ratio * formation_width),
+            "metric": spread, "threshold": ratio * formation_width}
+
+
+def detect_encircling(positions: np.ndarray, target: np.ndarray,
+                      thresh: float = EMERGENT_THRESHOLDS["encircling"]) -> Dict:
+    """Encircling iff encirclement ratio > 0.9."""
+    from src.sim.large_scale_swarm import encirclement_ratio
+    enc = encirclement_ratio(np.asarray(positions, dtype=np.float32),
+                             np.asarray(target, dtype=np.float32))
+    return {"behavior": "encircling", "detected": bool(enc > thresh),
+            "metric": enc, "threshold": thresh}
+
+
+def detect_swarming(positions: np.ndarray,
+                    thresh: float = EMERGENT_THRESHOLDS["swarming_density"]) -> Dict:
+    """Swarming iff density > 0.5 drones/m^3."""
+    from src.sim.large_scale_swarm import swarm_density
+    dens = swarm_density(np.asarray(positions, dtype=np.float32))
+    return {"behavior": "swarming", "detected": bool(dens > thresh),
+            "metric": dens, "threshold": thresh}
+
+
+def detect_emergent_swarm_behavior(
+    positions: np.ndarray, velocities: np.ndarray,
+    formation_width: float = 16.0, target: Optional[np.ndarray] = None,
+) -> Dict:
+    """Score flocking/flanking/encircling/swarming; returns detected set."""
+    from src.sim.large_scale_swarm import detect_emergent_behaviors
+    return detect_emergent_behaviors(
+        np.asarray(positions, dtype=np.float32),
+        np.asarray(velocities, dtype=np.float32),
+        formation_width=formation_width, target=target)
+
+
+class HierarchicalSwarmCoordinator(SwarmCoordinator):
+    """SwarmCoordinator + battalion hierarchy + emergent detection (SAR-only)."""
+
+    def __init__(self, drone_ids: List[int], **kw):
+        super().__init__(drone_ids=list(drone_ids), **kw)
+        self.hierarchy = build_command_hierarchy(list(drone_ids))
+        self.platoon_leaders: Dict[str, int] = {}
+        self.company_leaders: Dict[str, int] = {}
+        self._elect_hierarchical_leaders()
+
+    def _elect_hierarchical_leaders(self) -> None:
+        alive = self.alive_ids() or list(self.drone_ids)
+        comp_a = self.hierarchy.get("company_a", {}).get("platoons", {})
+        for platoon, members in comp_a.items():
+            cands = [d for d in members if d in alive] or list(members)
+            if cands:
+                self.platoon_leaders[f"company_a/{platoon}"] = min(
+                    cands, key=self._election_key)
+        for company in ("company_a", "company_b", "company_c"):
+            members = self.hierarchy.get(company, {}).get("members", [])
+            cands = [d for d in members if d in alive] or list(members)
+            if cands:
+                self.company_leaders[company] = min(cands, key=self._election_key)
+        self.elect_leader()  # battalion commander
+
+    def issue_command(self, level: str, command: Dict) -> Dict:
+        """Issue a SAR command at a hierarchy level with latency budget."""
+        t0 = time.perf_counter()
+        kind = str(command.get("kind", "search_room"))
+        if kind not in SAR_TASK_KINDS:
+            raise ValueError(f"SAR-only command required, got {kind!r}")
+        latency_ms = (time.perf_counter() - t0) * 1000.0
+        return {"level": level, "command": command,
+                "latency_ms": latency_ms,
+                "budget_ms": command_latency_ms(level),
+                "within_budget": latency_ms < command_latency_ms(level)}
+
+    def detect_behaviors(self, positions, velocities,
+                         formation_width: float = 16.0,
+                         target: Optional[np.ndarray] = None) -> Dict:
+        return detect_emergent_swarm_behavior(
+            positions, velocities, formation_width=formation_width, target=target)
+
+    def hierarchy_report(self) -> Dict:
+        return {"hierarchy": self.hierarchy,
+                "battalion_commander": self.leader_id,
+                "company_leaders": dict(self.company_leaders),
+                "platoon_leaders": dict(self.platoon_leaders)}

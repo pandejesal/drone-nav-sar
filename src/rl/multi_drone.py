@@ -365,3 +365,100 @@ def strike_formation_ok(drone_positions, min_sep: float = MIN_SEP_M) -> dict:
     collisions = int(((tri < hard).sum()) // 1) if tri.size else 0
     return {"min_separation": min_d, "collisions": collisions,
             "ok": bool(collisions == 0 and min_d >= min_sep)}
+
+
+# -- Sprint 25: 50+ drone PPO, shared critic, CTDE (SAR-only) ---------------
+# Centralized Training Decentralized Execution: actors see only local
+# conditioned obs; a single shared critic sees the joint global state
+# (mean positions/velocities + team victim progress) during training.
+
+LARGE_SCALE_N = 50
+GLOBAL_STATE_DIM = 3 + 3 + 2  # centroid(3) + mean_vel(3) + found/served(2)
+
+
+def make_large_scale_env(n_drones: int = LARGE_SCALE_N, seed: int = 0,
+                         **kw) -> MultiDroneEnv:
+    """Build a 50+ drone SAR env (shared weights scale to any N)."""
+    return MultiDroneEnv(n_drones=max(int(n_drones), LARGE_SCALE_N), seed=seed, **kw)
+
+
+def global_state(env: MultiDroneEnv) -> np.ndarray:
+    """Joint state for the shared critic: centroid + mean vel + progress."""
+    centroid = env.positions.mean(axis=0).astype(np.float32)
+    mean_vel = env.velocities.mean(axis=0).astype(np.float32)
+    prog = np.array([float(sum(env.victim_found)),
+                     float(sum(env.victim_served))], dtype=np.float32)
+    return np.concatenate([centroid, mean_vel, prog]).astype(np.float32)
+
+
+class SharedCritic:
+    """Linear shared critic over the global state (numpy, CPU-only).
+
+    SAR-only value head: predicts team return (victim service + nav).
+    """
+
+    def __init__(self, state_dim: int = GLOBAL_STATE_DIM, seed: int = 0,
+                 lr: float = 1e-3):
+        self.rng = np.random.default_rng(int(seed))
+        self.w = (self.rng.standard_normal(int(state_dim)).astype(np.float32)
+                  * 0.01)
+        self.b = np.float32(0.0)
+        self.lr = float(lr)
+
+    def value(self, state: np.ndarray) -> float:
+        s = np.asarray(state, dtype=np.float32).reshape(-1)
+        return float(s @ self.w + self.b)
+
+    def update(self, states: np.ndarray, returns: np.ndarray) -> Dict:
+        """One gradient step on MSE value loss; returns {loss, value_mean}."""
+        S = np.asarray(states, dtype=np.float32)
+        R = np.asarray(returns, dtype=np.float32).reshape(-1)
+        preds = S @ self.w + self.b
+        err = preds - R
+        loss = float((err ** 2).mean())
+        grad_w = (2.0 / max(1, len(R))) * (S.T @ err)
+        grad_b = float(2.0 * err.mean())
+        self.w = (self.w - self.lr * grad_w).astype(np.float32)
+        self.b = np.float32(self.b - self.lr * grad_b)
+        return {"loss": loss, "value_mean": float(preds.mean())}
+
+
+def ctde_rollout(env: MultiDroneEnv, steps: int = 32,
+                 seed: int = 0) -> Dict:
+    """Decentralized rollout: per-drone heuristic actor + centralized critic.
+
+    Actors act greedily toward their goal (decentralized execution);
+    the shared critic scores the joint state (centralized training).
+    Returns trajectory summary usable by PPO.
+    """
+    rng = np.random.default_rng(int(seed))
+    critic = SharedCritic(seed=seed)
+    obs, _ = env.reset(seed=seed)
+    states, rewards, values = [], [], []
+    for _ in range(int(steps)):
+        acts = np.zeros((env.n_drones, env.act_dim), dtype=np.float32)
+        for d in range(env.n_drones):
+            goal = env.goals[d % len(env.goals)]
+            to_goal = goal - env.positions[d]
+            acts[d, 0] = 1.0 if to_goal[0] > 0 else 0.0
+            acts[d, 1] = 1.0 if to_goal[0] <= 0 else 0.0
+            acts[d, 2] = 1.0 if to_goal[1] > 0 else 0.0
+            acts[d, 3] = 1.0 if to_goal[1] <= 0 else 0.0
+        acts += rng.normal(0, 0.05, size=acts.shape).astype(np.float32)
+        obs, rew, dones, _, _ = env.step(acts)
+        states.append(global_state(env))
+        rewards.append(float(rew.mean()))
+        values.append(critic.value(states[-1]))
+    S = np.stack(states)
+    R = np.array(rewards, dtype=np.float32)
+    # Discounted returns (gamma=0.99).
+    disc, acc = 0.99, 0.0
+    rets = np.zeros_like(R)
+    for t in range(len(R) - 1, -1, -1):
+        acc = R[t] + disc * acc
+        rets[t] = acc
+    train = critic.update(S, rets)
+    return {"mean_reward": float(R.mean()), "mean_value": float(np.mean(values)),
+            "critic_loss": train["loss"], "joint_success": env.joint_success(),
+            "n_drones": env.n_drones, "paradigm": "CTDE",
+            "execution": "decentralized", "training": "centralized-shared-critic"}

@@ -1,14 +1,26 @@
 #!/usr/bin/env python3
-"""Sprint 22: formal autonomy validation — reachability, safety, liveness.
+"""Sprint 24: formal autonomy validation — reachability, safety, liveness.
 
 Implements lightweight, dependency-free checks in the spirit of HJ/SOS
-reachability, barrier-function safety, and LTL liveness. SAR-only.
+reachability, barrier-function safety, and LTL liveness. Wires the Sprint 24
+formal stack (reachability.HJReachability, safety_invariants barriers,
+liveness.LivenessVerifier, formal_verifier SOS/CBF) behind the original
+episode-level API. SAR-only.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 import numpy as np
+
+from src.sim.reachability import HJReachability, ReachabilityConfig, TargetSet, AvoidSet
+from src.sim.safety_invariants import SafetyInvariantChecker, SafetyConfig
+from src.sim.liveness import LivenessVerifier, propositions_from_episode
+from src.sim.formal_verifier import (
+    SOSProgram,
+    BarrierCertificateVerifier,
+    CBFVerifier,
+)
 
 
 @dataclass
@@ -140,3 +152,87 @@ class AutonomyValidator:
                 "reachability": sum(r.reached for r in results) / n,
                 "safety_violations": sum(len(r.safety_violations) for r in results),
                 "violation_free_rate": sum(not r.safety_violations for r in results) / n}
+
+    # -- Sprint 24 formal stack ------------------------------------------------
+    def hj_backward_reachable_set(self, target: np.ndarray,
+                                  horizon: float | None = None,
+                                  n_bins: int = 16) -> Dict[str, object]:
+        """Hamilton-Jacobi BRS of `target` (level-set PDE, avoids obstacles)."""
+        tgt = TargetSet(np.asarray(target, float).reshape(3),
+                        radius=self.cfg.goal_radius)
+        avoid = AvoidSet(list(self.obstacles), radius=self.obstacle_radius,
+                         margin=self.cfg.obstacle_margin)
+        hj = HJReachability(ReachabilityConfig(
+            geofence_xy=self.cfg.geofence_xy, min_altitude=self.cfg.min_altitude,
+            max_altitude=self.cfg.max_altitude, max_speed=self.cfg.max_speed,
+            n_bins=n_bins, horizon=horizon or 2.0), target=tgt, avoid=avoid)
+        grid = hj.compute_backward_reachable_set()
+        return {"value_grid": grid,
+                "reachable_fraction": hj.backward_reachable_fraction(),
+                "reachable": hj.backward_reachable_fraction() > 0.0}
+
+    def verify_barrier_certificate(self, safe_samples: np.ndarray,
+                                   unsafe_samples: np.ndarray) -> Dict[str, object]:
+        """SOS barrier-certificate check over the obstacle CBF margin."""
+        sep = self.cfg.obstacle_margin + self.obstacle_radius
+        obs = list(self.obstacles)
+
+        def h(x: np.ndarray) -> float:
+            p = np.asarray(x, float).reshape(3)
+            vals = [self.cfg.geofence_xy - abs(p[0]),
+                    self.cfg.geofence_xy - abs(p[1]),
+                    p[2] - self.cfg.min_altitude, self.cfg.max_altitude - p[2]]
+            vals += [float(np.linalg.norm(p - o)) - sep for o in obs]
+            return float(min(vals))
+
+        res = BarrierCertificateVerifier(h).verify(safe_samples, unsafe_samples)
+        return {"certified": res.certified, "h_min_safe": res.h_min_safe,
+                "h_max_unsafe": res.h_max_unsafe, "lie_min": res.lie_min,
+                "sos_feasible": res.sos.feasible,
+                "min_eigenvalue": res.sos.min_eigenvalue}
+
+    def verify_cbf_sos(self, positions: np.ndarray) -> Dict[str, object]:
+        """CBF verification (relative degree + SOS feasibility)."""
+        sep = self.cfg.obstacle_margin + self.obstacle_radius
+        obs = list(self.obstacles)
+
+        def h(x: np.ndarray) -> float:
+            p = np.asarray(x, float).reshape(3)
+            vals = [float(np.linalg.norm(p - o)) - sep for o in obs] or [float("inf")]
+            return float(min(vals))
+
+        res = CBFVerifier(h, u_max=self.cfg.max_speed).verify(positions)
+        return {"holds": res.holds, "relative_degree": res.relative_degree,
+                "worst_condition": res.worst_condition,
+                "sos_feasible": res.sos_feasible, "notes": res.notes}
+
+    def synthesize_safe_control(self, position: np.ndarray,
+                                u_nom: np.ndarray) -> Dict[str, object]:
+        """QP-based (analytic, input-constrained) safe controller synthesis."""
+        sep = self.cfg.obstacle_margin + self.obstacle_radius
+        obs = list(self.obstacles)
+
+        def h(x: np.ndarray) -> float:
+            p = np.asarray(x, float).reshape(3)
+            vals = [float(np.linalg.norm(p - o)) - sep for o in obs] or [float("inf")]
+            return float(min(vals))
+
+        return CBFVerifier(h, u_max=self.cfg.max_speed).synthesize_safe_control(
+            position, u_nom)
+
+    def check_ltl(self, positions: np.ndarray, goal: np.ndarray,
+                  formula: str) -> Dict[str, object]:
+        """LTL model checking (Büchi/SPIN-style) over an episode trace."""
+        trace = propositions_from_episode(
+            positions, goal, obstacles=self.obstacles,
+            goal_radius=self.cfg.goal_radius,
+            obstacle_margin=self.cfg.obstacle_margin,
+            obstacle_radius=self.obstacle_radius)
+        res = LivenessVerifier().check(trace, formula)
+        auto = res.automaton
+        return {"satisfied": res.satisfied, "formula": res.formula,
+                "counterexample_step": res.counterexample_step,
+                "automaton": ({"name": auto.name, "states": auto.states,
+                               "initial": auto.initial,
+                               "accepting": auto.accepting}
+                              if auto is not None else None)}
