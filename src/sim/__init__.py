@@ -17,9 +17,13 @@ from .drone_dynamics import (
 )
 from .domain_randomization import (
     DomainRandomizer,
-    LightingParams,
-    TextureParams,
-    PhysicsParams,
+    LightingRandomization,
+    TextureRandomization,
+    PhysicsRandomization,
+    SensorRandomization,
+    EnvironmentRandomization,
+    InitialStateRandomization,
+    get_dynamic_config,
 )
 from .mock_backend import MockDroneBackend
 from .isaac_sim_env import IsaacSimEnv
@@ -36,9 +40,13 @@ __all__ = [
     "QuadrotorParams",
     "create_default_quadrotor",
     "DomainRandomizer",
-    "LightingParams",
-    "TextureParams",
-    "PhysicsParams",
+    "LightingRandomization",
+    "TextureRandomization",
+    "PhysicsRandomization",
+    "SensorRandomization",
+    "EnvironmentRandomization",
+    "InitialStateRandomization",
+    "get_dynamic_config",
     "MockDroneBackend",
     "IsaacSimEnv",
     "AirSimEnv",

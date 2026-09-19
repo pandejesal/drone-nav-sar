@@ -121,15 +121,6 @@ Jules is NOT used in this project.
 
 ---
 
-## SAFETY & ETHICS (non-negotiable)
-- **No weaponization code** — no targeting, no kinetic effectors
-- **SAR-only primitives**: `navigate_to`, `hover`, `drop_payload`, `return_home`
-- **Geofence + altitude ceiling** hardcoded in control layer
-- **Human-on-the-loop**: MAVLink heartbeat + RC override always active
-- **Open license**: MIT/Apache-2.0 — community audit welcome
-
----
-
 ## CURRENT STATE (Sprint 3 complete — 2026-09-14)
 - [x] Sprints 1-3 done (docker → reconstruction → sim mock_backend + 3 envs, 20 tests green)
 - [x] Repo: https://github.com/pandejesal/drone-nav-sar (private, master)

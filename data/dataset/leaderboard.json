@@ -1,0 +1,55 @@
+{
+  "checkpoint": "policy_sprint4.pt",
+  "rows": [
+    {
+      "space_id": "space_000",
+      "split": "train",
+      "type": "indoor_room",
+      "episodes": 5,
+      "SR": 0.6,
+      "SPL": 0.4964,
+      "energy": 3.5168,
+      "latency_ms": 8.92
+    },
+    {
+      "space_id": "space_001",
+      "split": "train",
+      "type": "indoor_corridor",
+      "episodes": 5,
+      "SR": 0.6,
+      "SPL": 0.4153,
+      "energy": 3.2423,
+      "latency_ms": 10.05
+    },
+    {
+      "space_id": "space_002",
+      "split": "train",
+      "type": "outdoor_yard",
+      "episodes": 5,
+      "SR": 0.8,
+      "SPL": 0.6523,
+      "energy": 1.8857,
+      "latency_ms": 10.69
+    },
+    {
+      "space_id": "space_003",
+      "split": "val",
+      "type": "indoor_room",
+      "episodes": 5,
+      "SR": 0.4,
+      "SPL": 0.3323,
+      "energy": 1.9656,
+      "latency_ms": 10.86
+    },
+    {
+      "space_id": "space_004",
+      "split": "test",
+      "type": "indoor_corridor",
+      "episodes": 5,
+      "SR": 0.4,
+      "SPL": 0.2629,
+      "energy": 2.7817,
+      "latency_ms": 14.05
+    }
+  ]
+}

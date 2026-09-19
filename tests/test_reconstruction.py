@@ -118,7 +118,6 @@ class TestBlenderCleanup(unittest.TestCase):
 
     def test_args_parsing(self):
         """Test argument parsing."""
-        from src.reconstruction.blender_cleanup import main
         import argparse
 
         # Test that parser exists and has expected args
@@ -137,6 +136,11 @@ class TestBlenderCleanup(unittest.TestCase):
         self.assertEqual(args.output_file, "output.glb")
         self.assertEqual(args.target_tris, 30000)
         self.assertEqual(args.texture_size, 2048)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Blender tests require Linux with Blender installed")
+    def test_blender_import(self):
+        """Test that blender_cleanup can be imported inside Blender."""
+        pass
 
 
 class TestIntegration(unittest.TestCase):

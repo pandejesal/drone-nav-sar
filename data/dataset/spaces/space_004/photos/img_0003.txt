@@ -1,0 +1,1 @@
+synthetic frame 3 64x64 RGB-D placeholder

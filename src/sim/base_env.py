@@ -81,10 +81,21 @@ class SimConfig:
     randomize_physics: bool = True
     randomize_initial_pose: bool = True
 
+    # Initial state randomization (Sprint 8 - mock backend compatibility)
+    initial_state_position_bounds: Tuple[float, float, float, float, float, float] = (-3.0, 3.0, -3.0, 3.0, 1.0, 5.0)
+
     # Task
     goal_position: Optional[np.ndarray] = None
     goal_tolerance: float = 0.5
     max_episode_steps: int = 1000
+
+    @property
+    def initial_state(self):
+        """Compatibility shim for DomainRandomizer mock-backend API."""
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            position_bounds=self.initial_state_position_bounds
+        )
 
 
 class BaseDroneEnv(ABC, gym.Env):

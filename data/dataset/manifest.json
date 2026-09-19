@@ -1,0 +1,97 @@
+{
+  "name": "drone-nav-sar/dataset",
+  "sprint": 12,
+  "sar_only": true,
+  "license": "CC-BY-4.0",
+  "resolution": [
+    64,
+    64
+  ],
+  "quick": true,
+  "episodes_per_space": 5,
+  "method": "colmap",
+  "seed": 12,
+  "spaces": [
+    {
+      "space_id": "space_000",
+      "split": "train",
+      "space_type": "indoor_room",
+      "photos": 5,
+      "mesh_path": "spaces\\space_000\\mesh\\space.glb",
+      "policy_path": "spaces\\space_000\\checkpoints\\policy.pt",
+      "onnx_path": "spaces\\space_000\\checkpoints\\policy.onnx",
+      "episodes_trained": 5,
+      "resolution": [
+        64,
+        64
+      ],
+      "sha256": "1f7bd2f08bcc3f85e8c8ba007a925d6ec50067ff9a839cc6240393e47ee27502"
+    },
+    {
+      "space_id": "space_001",
+      "split": "train",
+      "space_type": "indoor_corridor",
+      "photos": 5,
+      "mesh_path": "spaces\\space_001\\mesh\\space.glb",
+      "policy_path": "spaces\\space_001\\checkpoints\\policy.pt",
+      "onnx_path": "spaces\\space_001\\checkpoints\\policy.onnx",
+      "episodes_trained": 5,
+      "resolution": [
+        64,
+        64
+      ],
+      "sha256": "fc0471bc6c3685c6c337aefe371401d91d48efe6beabee9e0ee8499b3d3f2bea"
+    },
+    {
+      "space_id": "space_002",
+      "split": "train",
+      "space_type": "outdoor_yard",
+      "photos": 5,
+      "mesh_path": "spaces\\space_002\\mesh\\space.glb",
+      "policy_path": "spaces\\space_002\\checkpoints\\policy.pt",
+      "onnx_path": "spaces\\space_002\\checkpoints\\policy.onnx",
+      "episodes_trained": 5,
+      "resolution": [
+        64,
+        64
+      ],
+      "sha256": "36d506815130ad914ddbe063656c63eaa70e36c0f486d678554100fb9fc0664b"
+    },
+    {
+      "space_id": "space_003",
+      "split": "val",
+      "space_type": "indoor_room",
+      "photos": 5,
+      "mesh_path": "spaces\\space_003\\mesh\\space.glb",
+      "policy_path": "spaces\\space_003\\checkpoints\\policy.pt",
+      "onnx_path": "spaces\\space_003\\checkpoints\\policy.onnx",
+      "episodes_trained": 5,
+      "resolution": [
+        64,
+        64
+      ],
+      "sha256": "7c6b6df997442105d443bc966a67350651f722f420a805bf13f0c06a7c9f4a31"
+    },
+    {
+      "space_id": "space_004",
+      "split": "test",
+      "space_type": "indoor_corridor",
+      "photos": 5,
+      "mesh_path": "spaces\\space_004\\mesh\\space.glb",
+      "policy_path": "spaces\\space_004\\checkpoints\\policy.pt",
+      "onnx_path": "spaces\\space_004\\checkpoints\\policy.onnx",
+      "episodes_trained": 5,
+      "resolution": [
+        64,
+        64
+      ],
+      "sha256": "541967b92a27f9fa6352ac991d10866430de13b000649de5563088d7ac5da47e"
+    }
+  ],
+  "splits": {
+    "train": 3,
+    "val": 1,
+    "test": 1
+  },
+  "build_time_s": 0.33
+}

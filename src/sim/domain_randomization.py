@@ -140,6 +140,73 @@ class DomainRandomizer:
         """Register a callback for a randomization type."""
         self._randomization_callbacks[rand_type].append(callback)
 
+    # -- Mock-backend compatibility shims (Sprint 8) --------------------
+    def reseed(self, rng) -> None:
+        """Adopt an external RNG (mock backend calls this on every reset)."""
+        if rng is not None:
+            self._rng = rng
+
+    def apply_all(self) -> Dict[str, Any]:
+        """Sample episode physics scales (mock-backend legacy API).
+
+        Returns {"physics": SimpleNamespace(mass_scale, thrust_scale,
+        motor_tau_scale, gravity_scale)} sampled from the physics ranges.
+        """
+        from types import SimpleNamespace
+
+        cfg = getattr(self.config, "physics", None)
+        if cfg is None:  # mock backend passes SimConfig; fall back to defaults
+            cfg = PhysicsRandomization()
+        mass_scale = float(self._rng.uniform(*cfg.mass_range))
+        thrust_scale = float(self._rng.uniform(*cfg.motor_thrust_range))
+        motor_tau_scale = float(self._rng.uniform(*cfg.motor_time_constant_range))
+        gravity_sample = float(self._rng.uniform(*cfg.gravity_range))
+        gravity_scale = gravity_sample / 9.81
+        return {
+            "physics": SimpleNamespace(
+                mass_scale=mass_scale,
+                thrust_scale=thrust_scale,
+                motor_tau_scale=motor_tau_scale,
+                gravity_scale=gravity_scale,
+            )
+        }
+
+    def randomize_initial_pose(self):
+        """Return (pos (3,), quat (4,)) hover pose (mock-backend legacy API)."""
+        cfg = getattr(self.config, "initial_state", None)
+        bounds = cfg.position_bounds if cfg is not None else (-3, 3, -3, 3, 1, 4)
+        x = float(self._rng.uniform(bounds[0], bounds[1]))
+        y = float(self._rng.uniform(bounds[2], bounds[3]))
+        z = float(self._rng.uniform(bounds[4], bounds[5]))
+        pos = np.array([x, y, z], dtype=np.float32)
+        quat = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        return pos, quat
+
+    def sample_wind(self, dt: float):
+        """Sample wind vector; dt==0 resets the OU process (legacy API)."""
+        if dt == 0.0:
+            self._wind = np.zeros(3, dtype=np.float32)
+            return self._wind
+        wind = getattr(self, "_wind", None)
+        if wind is None:
+            wind = np.zeros(3, dtype=np.float32)
+        cfg = getattr(self.config, "environment", None)
+        wind_enabled = bool(getattr(cfg, "wind_enabled", True)) if cfg is not None else True
+        wind_range = getattr(cfg, "wind_speed_range", (0, 2.0)) if cfg is not None else (0, 2.0)
+        if wind_enabled:
+            lo, hi = wind_range
+            target_speed = float(self._rng.uniform(lo, hi))
+            target_dir = float(self._rng.uniform(0, 2 * np.pi))
+            target = np.array(
+                [target_speed * np.cos(target_dir),
+                 target_speed * np.sin(target_dir), 0.0],
+                dtype=np.float32,
+            )
+            alpha = min(1.0, float(dt) * 0.5)
+            wind = ((1.0 - alpha) * wind + alpha * target).astype(np.float32)
+        self._wind = wind
+        return self._wind
+
     def randomize_all(self, env: Any) -> Dict[str, Any]:
         """Apply all enabled randomizations."""
         applied = {}
@@ -425,6 +492,22 @@ def create_aggressive_randomizer() -> DomainRandomizer:
         curriculum_steps=100000,
     )
     return DomainRandomizer(config)
+
+
+def get_dynamic_config(level: int) -> Dict:
+    """Sprint 5 dynamic-obstacle config for curriculum `level`.
+
+    Level map: L0 static; L1 1 person, no wind; L2 2 people + light
+    wind; L3 3 people + doors + gusts. Levels are clamped to [0, 3].
+    """
+    level = max(0, min(int(level), 3))
+    table = {
+        0: {"num_people": 0, "use_doors": False, "wind": False, "gusts": False},
+        1: {"num_people": 1, "use_doors": False, "wind": False, "gusts": False},
+        2: {"num_people": 2, "use_doors": False, "wind": True, "gusts": False},
+        3: {"num_people": 3, "use_doors": True, "wind": True, "gusts": True},
+    }
+    return dict(table[level])
 
 
 if __name__ == "__main__":

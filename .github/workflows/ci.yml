@@ -1,0 +1,46 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install package + dev tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev] || pip install pytest flake8 mypy black isort
+
+      - name: Pre-commit checks (black, isort, flake8, mypy, pytest -q)
+        run: bash scripts/precommit.sh
+
+      - name: "Pytest (flake suppression - rerun failures once)"
+        run: pytest -q --tb=short --reruns 1 --reruns-delay 5 -p no:cacheprovider
+        continue-on-error: false
+
+      - name: Mypy strict
+        run: mypy --strict src/
+
+      - name: Upload test artifacts (logs, eval reports, onnx)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-${{ matrix.os }}-py${{ matrix.python }}
+          path: |
+            sim2real_test.json
+            **/*.log
+            **/*.onnx
+            pytest-report.xml
+          if-no-files-found: ignore

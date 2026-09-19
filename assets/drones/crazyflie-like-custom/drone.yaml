@@ -1,0 +1,16 @@
+api_version: 2
+name: crazyflie-like-custom
+geometry:
+  arm_length_m: 0.046
+  mass_kg: 0.027
+propulsion:
+  max_thrust_N: 0.62
+  max_rpm: 25000
+  motor_tau_s: 0.02
+  thrust_unit: normalized
+inertia:
+  ixx: 0.000014
+  iyy: 0.000014
+  izz: 0.000022
+model_files:
+  urdf: model.urdf

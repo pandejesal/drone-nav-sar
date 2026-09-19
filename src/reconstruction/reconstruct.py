@@ -106,9 +106,13 @@ def check_blender_available() -> bool:
 
 
 def count_images(input_dir: Path) -> int:
-    """Count image files in directory."""
-    return len(list(input_dir.glob("*.jpg")) + list(input_dir.glob("*.JPG")) +
-                list(input_dir.glob("*.png")) + list(input_dir.glob("*.PNG")))
+    """Count image files in directory (case-insensitive on Windows)."""
+    extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+    count = 0
+    for f in input_dir.iterdir():
+        if f.is_file() and f.suffix.lower() in extensions:
+            count += 1
+    return count
 
 
 def auto_select_method(input_dir: Path, quality: str) -> str:

@@ -1,0 +1,18 @@
+{
+  "api_version": 2,
+  "description": "DroneNav-SAR structured skill command (SAR-ONLY).",
+  "allowlist": ["navigate_to", "hover", "drop_payload", "return_home"],
+  "required": ["skill", "params", "constraints"],
+  "skills": {
+    "navigate_to": {"params": ["x", "y", "z", "yaw_deg", "speed_ms"]},
+    "hover": {"params": ["z", "yaw_deg", "timeout_s"]},
+    "drop_payload": {"params": ["z", "yaw_deg"]},
+    "return_home": {"params": ["speed_ms"]}
+  },
+  "limits": {
+    "ceiling_m": 2.5,
+    "geofence_xyz": [[0.0, 4.0], [0.0, 4.0], [0.2, 2.5]],
+    "max_speed_ms": 1.5,
+    "max_timeout_s": 60.0
+  }
+}

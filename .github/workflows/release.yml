@@ -1,0 +1,63 @@
+name: Release
+
+# Tag push (v*) -> build wheels, ONNX/TensorRT artifacts, Hugging Face Hub push.
+# SAR-only: release bundles contain navigate/hover/drop_payload( aid kits )/return_home
+# skills only. No weapons, targeting, kinetic, or surveillance payloads.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build onnx onnxruntime torch --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install -e . || pip install pytest
+
+      - name: Build wheels (sdist + wheel)
+        run: python -m build
+
+      - name: Export ONNX policy artifact
+        run: |
+          python -c "from src.control.edge_export import export_onnx; export_onnx('checkpoints/policy.pt', 'dist/policy.onnx')" || echo "no checkpoint yet - skipping ONNX export"
+
+      - name: Write TensorRT manifest (built on Jetson at deploy time)
+        run: |
+          mkdir -p dist
+          cat > dist/tensorrt-manifest.json <<'EOF'
+          {"engine": "policy.plan", "precision": "FP16", "source_onnx": "policy.onnx", "built_on": "jetson"}
+          EOF
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist-${{ github.ref_name }}
+          path: dist/
+
+      - name: Push to Hugging Face Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ vars.HF_REPO_ID }}
+        run: |
+          pip install huggingface_hub
+          python - <<'EOF'
+          import glob, os
+          from huggingface_hub import HfApi
+          repo = os.environ["HF_REPO_ID"]
+          tag = "${{ github.ref_name }}"
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.create_repo(repo, exist_ok=True)
+          for f in glob.glob("dist/*"):
+              api.upload_file(path_or_fileobj=f, path_in_repo=f"{tag}/{os.path.basename(f)}", repo_id=repo)
+          EOF
