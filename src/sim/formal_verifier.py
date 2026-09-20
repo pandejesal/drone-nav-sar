@@ -120,13 +120,18 @@ class CBFVerifier:
             return CBFResult(True, 1, 0.0, True, "empty positions")
 
         h_vals = np.array([self.h(p) for p in P])
+        # Handle NaN/inf in barrier function values
+        h_vals = np.where(np.isfinite(h_vals), h_vals, 0.0)
         eps = 1e-6
         grad_h = np.zeros_like(P)
         for i in range(3):
             P_plus = P.copy()
             P_plus[:, i] += eps
             h_plus = np.array([self.h(p) for p in P_plus])
-            grad_h[:, i] = (h_plus - h_vals) / eps
+            h_plus = np.where(np.isfinite(h_plus), h_plus, 0.0)
+            diff = h_plus - h_vals
+            diff = np.where(np.isfinite(diff), diff, 0.0)
+            grad_h[:, i] = diff / eps
 
         grad_norm = np.linalg.norm(grad_h, axis=1)
         condition = self.u_max * grad_norm + np.array([self.alpha(h) for h in h_vals])

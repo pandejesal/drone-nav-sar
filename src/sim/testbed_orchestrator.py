@@ -28,7 +28,7 @@ from src.sim.autonomy_validator import AutonomyValidator, ValidatorConfig
 
 
 @dataclass
-class TestCampaign:
+class Campaign:
     """A campaign of related test scenarios."""
     campaign_id: str
     name: str
@@ -49,7 +49,7 @@ class CampaignResult:
     duration_s: float
 
 
-class TestBedOrchestrator:
+class BedOrchestrator:
     """Orchestrates test bed campaigns, scenarios, and reporting."""
 
     def __init__(

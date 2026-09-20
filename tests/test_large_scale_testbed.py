@@ -28,7 +28,7 @@ from src.sim.hil_orchestrator import (
     DataLogger,
 )
 from src.sim.swarm_validator import SwarmValidator
-from src.sim.testbed_orchestrator import TestBedOrchestrator, TestCampaign
+from src.sim.testbed_orchestrator import BedOrchestrator, Campaign
 from src.sim.large_scale_swarm import LargeScaleSwarmEnv, detect_emergent_behaviors
 
 
@@ -268,7 +268,7 @@ class TestTestBedOrchestrator(unittest.TestCase):
 
     def test_campaign_execution(self):
         """TestBedOrchestrator runs campaign and generates report."""
-        orchestrator = TestBedOrchestrator(
+        orchestrator = BedOrchestrator(
             default_n_drones=10,  # Small for fast test
             default_area_m=30.0,
             enable_formal=True,
@@ -280,7 +280,7 @@ class TestTestBedOrchestrator(unittest.TestCase):
             create_scenario(ScenarioType.FORMATION_FLIGHT, n_drones=10, seed=1),
             create_scenario(ScenarioType.SWARM_PATROL, n_drones=10, seed=2),
         ]
-        campaign = TestCampaign(
+        campaign = Campaign(
             campaign_id="test_campaign",
             name="test",
             scenarios=scenarios,
