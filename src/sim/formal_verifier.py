@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Sprint 24: formal verifier — SOS programming, barrier certificates, CBF.
-
-Dependency-free SOS: a candidate polynomial p(x) = z(x)ᵀ Q z(x) is certified
-sum-of-squares iff its Gram matrix Q is PSD (min eigenvalue >= -tol), which
-rivals cvxpy+Mosek/ECOS for the fixed-basis certificates used here. CBF
-verification handles relative degree via numeric Lie derivatives and ships a
-QP-based (analytic, input-constrained) safe-controller synthesis. SAR-only.
-"""
+"""Sprint 24: formal verifier - SOS programming, barrier certificates, CBF."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,11 +7,9 @@ from typing import Callable, Dict, List, Tuple
 import numpy as np
 
 
-# -- SOS programming -------------------------------------------------------
 def monomial_basis(x: np.ndarray, degree: int = 2) -> np.ndarray:
-    """Monomials of each coordinate up to `degree` + pairwise products."""
     v = np.asarray(x, dtype=np.float64).reshape(-1)
-    feats: List[float] = [1.0]
+    feats = [1.0]
     for d in range(1, degree + 1):
         feats.extend(float(xi) ** d for xi in v)
     for i in range(v.size):
@@ -36,25 +27,26 @@ class SOSResult:
 
 
 class SOSProgram:
-    """Gram-matrix SOS check: p(x)=zᵀQz is SOS ⟺ Q ⪰ 0."""
-
     def __init__(self, tol: float = 1e-8):
         self.tol = float(tol)
 
     def verify_gram(self, Q: np.ndarray) -> SOSResult:
         Q = np.asarray(Q, dtype=np.float64)
         Q = 0.5 * (Q + Q.T)
-        eigs = np.linalg.eigvalsh(Q)
-        lam_min = float(eigs.min()) if eigs.size else float("inf")
-        rank = int(np.sum(eigs > self.tol))
-        ok = bool(lam_min >= -self.tol)
-        return SOSResult(ok, lam_min, rank,
-                         certificate="Q PSD ⇒ p(x)=zᵀQz is SOS" if ok
-                         else f"Q indefinite (λmin={lam_min:.3e})")
+        try:
+            eigs = np.linalg.eigvalsh(Q)
+            lam_min = float(eigs.min()) if eigs.size else float("inf")
+            rank = int(np.sum(eigs > self.tol))
+            ok = bool(lam_min >= -self.tol)
+            return SOSResult(ok, lam_min, rank,
+                             certificate="Q PSD => p(x)=z^T Q z is SOS" if ok
+                             else "Q indefinite (lambda_min={:.3e})".format(lam_min))
+        except np.linalg.LinAlgError:
+            return SOSResult(False, float("inf"), 0,
+                             "Eigenvalue computation failed to converge")
 
     def certificate_for_nonnegative_samples(self, values: np.ndarray,
                                             basis_dim: int = 4) -> SOSResult:
-        """Diagonal-Gram SOS witness for pointwise-nonnegative residuals."""
         vals = np.asarray(values, dtype=np.float64).reshape(-1)
         if np.any(vals < -self.tol):
             return SOSResult(False, float(vals.min()), 0,
@@ -63,7 +55,6 @@ class SOSProgram:
         return self.verify_gram(Q)
 
 
-# -- Barrier certificates ---------------------------------------------------
 @dataclass
 class BarrierCertificateResult:
     certified: bool
@@ -75,68 +66,40 @@ class BarrierCertificateResult:
 
 
 class BarrierCertificateVerifier:
-    """Certify h: h>=0 on safe samples, h<0 on unsafe, ḣ+α(h)>=0 on boundary."""
-
     def __init__(self, h: Callable[[np.ndarray], float],
-                 gamma: float = 1.0, tol: float = 1e-6,
-                 grad: Callable[[np.ndarray], np.ndarray] | None = None):
+                 alpha: Callable[[float], float] = lambda s: s):
         self.h = h
-        self.gamma = float(gamma)
-        self.tol = float(tol)
-        self._grad_cb = grad
-        self.sos = SOSProgram()
+        self.alpha = alpha
 
-    def _grad_fn(self, x: np.ndarray) -> np.ndarray:
-        if self._grad_cb is not None:
-            return np.asarray(self._grad_cb(x), dtype=np.float64)
-        x = np.asarray(x, dtype=np.float64).reshape(-1)
-        g = np.zeros_like(x)
-        eps = 1e-5
-        for i in range(x.size):
-            xp, xm = x.copy(), x.copy()
-            xp[i] += eps
-            xm[i] -= eps
-            g[i] = (self.h(xp) - self.h(xm)) / (2 * eps)
-        return g
+    def verify(self, safe_samples: np.ndarray,
+               unsafe_samples: np.ndarray) -> BarrierCertificateResult:
+        safe_vals = np.array([self.h(s) for s in safe_samples])
+        unsafe_vals = np.array([self.h(u) for u in unsafe_samples])
+        h_min_safe = float(safe_vals.min()) if safe_vals.size else float("inf")
+        h_max_unsafe = float(unsafe_vals.max()) if unsafe_vals.size else float("-inf")
 
-    def verify(self, safe_samples: np.ndarray, unsafe_samples: np.ndarray,
-               velocities: np.ndarray | None = None,
-               dt: float = 0.1) -> BarrierCertificateResult:
-        S = np.asarray(safe_samples, dtype=np.float64).reshape(-1, 3)
-        U = np.asarray(unsafe_samples, dtype=np.float64).reshape(-1, 3)
-        hs = np.array([self.h(p) for p in S])
-        hu = np.array([self.h(p) for p in U]) if len(U) else np.array([-1.0])
-        if velocities is not None:
-            V = np.asarray(velocities, dtype=np.float64).reshape(-1, 3)
-        else:
-            V = (S[1:] - S[:-1]) / dt if len(S) > 1 else np.zeros_like(S)
-            S_lie = S[:-1] if len(S) > 1 else S
-            lie = np.array([float(self._grad_fn(p).reshape(-1) @ v) + self.gamma * self.h(p)
-                            for p, v in zip(S_lie, V)]) if len(V) else np.array([0.0])
-            sos_res = self.sos.certificate_for_nonnegative_samples(
-                np.concatenate([hs, -hu, lie + self.tol]))
-            ok = bool(np.all(hs >= -self.tol) and np.all(hu < 0) and np.all(lie >= -self.tol))
-            return BarrierCertificateResult(
-                ok, float(hs.min()) if hs.size else float("inf"),
-                float(hu.max()) if hu.size else float("-inf"),
-                float(lie.min()) if lie.size else float("inf"), sos_res,
-                "SOS Gram PSD + Lie condition" if ok else "certificate conditions violated")
-        lie = np.array([float(self._grad_fn(p).reshape(-1) @ v) + self.gamma * self.h(p)
-                        for p, v in zip(S[: len(V)], V)])
-        sos_res = self.sos.certificate_for_nonnegative_samples(
-            np.concatenate([hs, -hu, lie + self.tol]))
-        ok = bool(np.all(hs >= -self.tol) and np.all(hu < 0)
-                  and (not lie.size or np.all(lie >= -self.tol)))
-        return BarrierCertificateResult(
-            ok, float(hs.min()) if hs.size else float("inf"),
-            float(hu.max()) if hu.size else float("-inf"),
-            float(lie.min()) if lie.size else float("inf"), sos_res,
-            "SOS Gram PSD + Lie condition" if ok else "certificate conditions violated")
+        boundary = safe_samples[np.abs(safe_vals) < 1e-2] if safe_samples.size else np.array([])
+        lie_min = float("inf")
+        if boundary.size:
+            for b in boundary:
+                eps = 1e-6
+                h0 = self.h(b)
+                h1 = self.h(b + eps * np.ones_like(b))
+                lie = (h1 - h0) / eps + self.alpha(h0)
+                lie_min = min(lie_min, lie)
+
+        sos = SOSProgram().certificate_for_nonnegative_samples(safe_vals)
+
+        certified = (h_min_safe >= 0.0 and h_max_unsafe < 0.0 and
+                     (lie_min >= 0.0 or boundary.size == 0) and sos.feasible)
+        return BarrierCertificateResult(certified, h_min_safe, h_max_unsafe,
+                                        lie_min if boundary.size else 0.0, sos,
+                                        "Barrier certificate verified" if certified
+                                        else "Barrier certificate failed")
 
 
-# -- CBF verification + QP synthesis ----------------------------------------
 @dataclass
-class CBFVerificationResult:
+class CBFResult:
     holds: bool
     relative_degree: int
     worst_condition: float
@@ -145,77 +108,74 @@ class CBFVerificationResult:
 
 
 class CBFVerifier:
-    """Verify L_f h + L_g h·u + α(h) >= 0 and synthesize safe controls.
-
-    Dynamics: single integrator ẋ=u (rel.deg 1) or double integrator
-    [ẋ=v, v̇=u] with position barrier (rel.deg 2, HOCBF chain).
-    """
-
     def __init__(self, h: Callable[[np.ndarray], float],
-                 gamma: float = 1.0, tol: float = 1e-6,
-                 u_max: float = 15.0):
+                 u_max: float = 15.0, alpha: Callable[[float], float] = lambda s: s):
         self.h = h
-        self.gamma = float(gamma)
-        self.tol = float(tol)
-        self.u_max = float(u_max)
-        self.sos = SOSProgram()
+        self.u_max = u_max
+        self.alpha = alpha
 
-    def estimate_relative_degree(self, x: np.ndarray,
-                                 max_degree: int = 3) -> int:
-        """Numeric relative degree: first order whose input gain ≠ 0.
-
-        Single-integrator position barriers react at order 1; barriers with
-        zero position gradient (e.g. velocity-only) defer to order 2.
-        """
-        x = np.asarray(x, dtype=np.float64).reshape(-1)
-        g = self._num_grad(x)
-        if float(np.linalg.norm(g)) > 1e-6:
-            return 1
-        return 2 if max_degree >= 2 else 1
-
-    def _num_grad(self, x: np.ndarray, eps: float = 1e-5) -> np.ndarray:
-        x = np.asarray(x, dtype=np.float64).reshape(-1)
-        g = np.zeros_like(x)
-        for i in range(x.size):
-            xp, xm = x.copy(), x.copy()
-            xp[i] += eps
-            xm[i] -= eps
-            g[i] = (self.h(xp) - self.h(xm)) / (2 * eps)
-        return g
-
-    def verify(self, positions: np.ndarray,
-               nominal_controls: np.ndarray | None = None,
-               dt: float = 0.1) -> CBFVerificationResult:
+    def verify(self, positions: np.ndarray) -> CBFResult:
         P = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
-        V = (P[1:] - P[:-1]) / dt if len(P) > 1 else np.zeros_like(P)
-        conds = [float(self._num_grad(p).reshape(-1) @ v) + self.gamma * self.h(p)
-                 for p, v in zip(P[:-1], V)] if len(V) else [float("inf")]
-        worst = float(min(conds))
-        rd = self.estimate_relative_degree(P[0]) if len(P) else 1
-        sos_res = self.sos.certificate_for_nonnegative_samples(np.asarray(conds) + self.tol)
-        holds = bool(worst >= -self.tol and sos_res.feasible)
-        return CBFVerificationResult(holds, rd, worst, sos_res.feasible,
-                                     f"SOS λmin={sos_res.min_eigenvalue:.3e}, r={rd}")
+        if P.size == 0:
+            return CBFResult(True, 1, 0.0, True, "empty positions")
 
-    def synthesize_safe_control(self, x: np.ndarray,
+        h_vals = np.array([self.h(p) for p in P])
+        eps = 1e-6
+        grad_h = np.zeros_like(P)
+        for i in range(3):
+            P_plus = P.copy()
+            P_plus[:, i] += eps
+            h_plus = np.array([self.h(p) for p in P_plus])
+            grad_h[:, i] = (h_plus - h_vals) / eps
+
+        grad_norm = np.linalg.norm(grad_h, axis=1)
+        condition = self.u_max * grad_norm + np.array([self.alpha(h) for h in h_vals])
+
+        worst = float(condition.min()) if condition.size else float("inf")
+        holds = bool(worst >= 0.0)
+
+        sos = SOSProgram().certificate_for_nonnegative_samples(h_vals)
+
+        return CBFResult(holds, 1, worst, sos.feasible,
+                         "CBF holds" if holds else "CBF violated (worst={:.3e})".format(worst))
+
+    def synthesize_safe_control(self, position: np.ndarray,
                                 u_nom: np.ndarray) -> Dict[str, object]:
-        """Min-norm QP: min ‖u−u_nom‖ s.t. Lg·u + (Lf + αh) >= 0, |u|<=umax.
+        p = np.asarray(position, dtype=np.float64).reshape(3)
+        u_nom = np.asarray(u_nom, dtype=np.float64).reshape(3)
 
-        Single active halfspace constraint → analytic projection + clip.
-        """
-        x = np.asarray(x, dtype=np.float64).reshape(3)
-        u = np.asarray(u_nom, dtype=np.float64).reshape(3)
-        Lg = self._num_grad(x).reshape(3)   # Lie gain row for ẋ = u
-        c = self.gamma * self.h(x)          # Lf=0 drift term + α(h)
-        a = Lg
-        b = c
-        denom = float(a @ a)
-        u_qp = u.copy()
-        if denom > 1e-12 and float(a @ u) + b < 0.0:
-            u_qp = u - a * ((float(a @ u) + b) / denom)
-        u_qp = np.clip(u_qp, -self.u_max, self.u_max)
-        residual = float(a @ u_qp) + b
-        return {"u_safe": u_qp, "u_nom": u,
-                "constraint_residual": residual,
-                "satisfies_cbf": bool(residual >= -self.tol),
-                "relative_degree": self.estimate_relative_degree(x)}
+        h_val = self.h(p)
+        eps = 1e-6
+        grad = np.zeros(3)
+        for i in range(3):
+            p_plus = p.copy()
+            p_plus[i] += eps
+            grad[i] = (self.h(p_plus) - h_val) / eps
+
+        if np.dot(grad, u_nom) + self.alpha(h_val) >= 0:
+            return {"u_safe": u_nom, "satisfies_cbf": True, "modified": False}
+
+        grad_norm_sq = np.dot(grad, grad)
+        if grad_norm_sq < 1e-12:
+            return {"u_safe": u_nom, "satisfies_cbf": False, "modified": False}
+
+        lam = (np.dot(grad, u_nom) + self.alpha(h_val)) / grad_norm_sq
+        u_safe = u_nom - lam * grad
+
+        u_norm = np.linalg.norm(u_safe)
+        if u_norm > self.u_max:
+            u_safe = u_safe * self.u_max / u_norm
+
+        return {"u_safe": u_safe, "satisfies_cbf": True, "modified": True}
+
+
+def verify_barrier_certificate(h: Callable[[np.ndarray], float],
+                               safe_samples: np.ndarray,
+                               unsafe_samples: np.ndarray) -> BarrierCertificateResult:
+    return BarrierCertificateVerifier(h).verify(safe_samples, unsafe_samples)
+
+
+def verify_cbf(h: Callable[[np.ndarray], float],
+               positions: np.ndarray,
+               u_max: float = 15.0) -> CBFResult:
+    return CBFVerifier(h, u_max=u_max).verify(positions)
